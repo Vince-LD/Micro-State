@@ -63,13 +63,7 @@ class StateMachine(Generic[StateEnumT, P]):
             ):
                 f_bis = cls.__state_transitions__.setdefault(
                     e,
-                    cast(
-                        Callable[
-                            Concatenate[Self, P],
-                            StateEnumT,
-                        ],
-                        f,
-                    ),
+                    cast(TransitionMethodType[Self, P, StateEnumT], f),
                 )
                 if f_bis is not f:
                     raise StateMachineCompilationError(

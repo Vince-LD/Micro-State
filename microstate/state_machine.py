@@ -50,12 +50,13 @@ class StateMachine(Generic[StateEnumT, P]):
         TransitionMethodType[Self, P, StateEnumT],
     ]
     __start_state__: StateEnumT
+    __current_state__: StateEnumT
 
     def __init_subclass__(cls, start_state: StateEnumT) -> None:
-        print("init subclass")
         super().__init_subclass__()
         cls.__state_type__ = type(start_state)
         cls.__start_state__ = start_state
+        cls.__current_state__ = start_state
 
         for attr_name in dir(cls):
             if callable(f := getattr(cls, attr_name)) and isinstance(
@@ -70,15 +71,20 @@ class StateMachine(Generic[StateEnumT, P]):
                         f"There are multiple transitions registered for Enum member '{e}': trying to register '{f.__qualname__}' but '{f_bis.__qualname__}' was already registered."
                     )
 
-    def __init__(self) -> None:
-        self.state = self.__start_state__
+    @property
+    def current_state(self) -> StateEnumT:
+        return self.__current_state__
+
+    @current_state.setter
+    def current_state(self, state: StateEnumT):
+        self.__current_state__ = state
 
     def update(self, *args, **kwargs) -> StateEnumT:
         transition_func = self.__state_transitions__.get(
-            self.state, lambda *args, **kwargs: self.state
+            self.__current_state__, lambda *args, **kwargs: self.__current_state__
         )
-        self.state = transition_func(self, *args, **kwargs)
-        return self.state
+        self.__current_state__ = transition_func(self, *args, **kwargs)
+        return self.__current_state__
 
 
 def _register_transition(

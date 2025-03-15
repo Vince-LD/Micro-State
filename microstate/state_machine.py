@@ -1,24 +1,22 @@
-from contextlib import contextmanager
+import functools
 import inspect
+from contextlib import contextmanager
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
-    Any,
     Callable,
     Concatenate,
     Generator,
-    Optional,
+    Generic,
+    Literal,
     ParamSpec,
     Self,
     TypeAlias,
     TypeVar,
-    Generic,
-    Literal,
     cast,
-    get_origin,
     get_args,
+    get_origin,
 )
-from enum import Enum
-import functools
 
 STATE_TAG = "__tagged_state__"
 
@@ -68,12 +66,12 @@ class StateMachine(Generic[StateEnumT, P]):
                 e: f
                 for fname in dir(cls)
                 if callable(f := getattr(cls, fname))
-                and isinstance(e := getattr(f, STATE_TAG, None), type(start_state))
+                and isinstance(e := getattr(f, STATE_TAG, None), cls.__state_type__)
             },
         )
         for attr_name in dir(cls):
             if callable(f := getattr(cls, attr_name)) and isinstance(
-                e := getattr(f, STATE_TAG, None), type(start_state)
+                e := getattr(f, STATE_TAG, None), cls.__state_type__
             ):
                 f_bis = cls.__state_transitions__.setdefault(
                     e,
@@ -168,51 +166,3 @@ def define_transitions(
     None,
 ]:
     yield functools.partial(_register_transition, _spec=spec_func)
-
-
-class TestE(Enum):
-    ON = 1
-    OFF = 2
-
-
-class MyStateMachine(StateMachine[TestE, P], start_state=TestE.ON):
-    @overload_signature()
-    def update(self, a: int, b: int) -> TestE: ...
-
-    with define_transitions(spec_func=update) as new:
-
-        @new(TestE.ON)
-        def on_to_off(self, a: int, b: int) -> Literal[TestE.OFF]:
-            return TestE.OFF
-
-        @new(TestE.OFF)
-        def off_to_on(self, a: int, b: int) -> Literal[TestE.ON]:
-            return TestE.ON
-
-
-m = MyStateMachine()
-u = m.update(1, 2)
-print(m.update(1, 2))
-print(m.update(1, 2))
-print(m.update(1, 2))
-
-
-class OtherStateMachine(StateMachine[TestE, P], start_state=TestE.ON):
-    @overload_signature()
-    def update(self) -> TestE: ...
-
-    with define_transitions(spec_func=update) as new:
-
-        @new(TestE.ON)
-        def on_to_off(self) -> Literal[TestE.OFF]:
-            return TestE.OFF
-
-        @new(TestE.OFF)
-        def off_to_on(self) -> Literal[TestE.ON]:
-            return TestE.ON
-
-
-m = OtherStateMachine()
-u = m.update()
-
-print(inspect.signature(OtherStateMachine.on_to_off).return_annotation)

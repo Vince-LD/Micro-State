@@ -9,6 +9,7 @@ from typing import (
     Optional,
     ParamSpec,
     Self,
+    TypeAlias,
     TypeVar,
     Generic,
     Literal,
@@ -19,12 +20,20 @@ from typing import (
 from enum import Enum
 import functools
 
+STATE_TAG = "__tagged_state__"
 
 StateEnumT = TypeVar("StateEnumT", bound=Enum)
 StateEnumT_bis = TypeVar("StateEnumT_bis", bound=Enum)
 P = ParamSpec("P")
 P_bis = ParamSpec("P_bis")
-STATE_TAG = "__state_tagged__"
+ST = TypeVar("ST", bound="StateMachine", covariant=True)
+ST_bis = TypeVar("ST_bis", bound="StateMachine")
+
+
+TransitionMethodType: TypeAlias = Callable[Concatenate[ST, P], StateEnumT]
+TransitionDecoratorType: TypeAlias = Callable[
+    [TransitionMethodType[ST, P, StateEnumT]], TransitionMethodType[ST, P, StateEnumT]
+]
 
 
 class BaseStateMachineError(BaseException): ...
@@ -40,10 +49,7 @@ class StateMachine(Generic[StateEnumT, P]):
     __state_type__: type[StateEnumT]
     __state_transitions__: dict[
         StateEnumT,
-        Callable[
-            Concatenate[Self, P],
-            StateEnumT,
-        ],
+        TransitionMethodType[Self, P, StateEnumT],
     ]
     __start_state__: StateEnumT
 
@@ -56,10 +62,7 @@ class StateMachine(Generic[StateEnumT, P]):
         cls.__state_transitions__ = cast(
             dict[
                 StateEnumT,
-                Callable[
-                    Concatenate[Self, P],
-                    StateEnumT,
-                ],
+                TransitionMethodType[Self, P, StateEnumT],
             ],
             {
                 e: f
@@ -68,27 +71,24 @@ class StateMachine(Generic[StateEnumT, P]):
                 and isinstance(e := getattr(f, STATE_TAG, None), type(start_state))
             },
         )
-
-        update_signature = inspect.signature(cls.update)
-        for func in cls.__state_transitions__.values():
-            sig = inspect.signature(func)
-            if sig.parameters != update_signature.parameters:
-                raise StateMachineCompilationError(
-                    f"Method `{func.__qualname__}` does not have the same signature as `{cls.update.__qualname__}`: {sig.parameters} != {update_signature.parameters}"
-                )
-
-            if sig.return_annotation is not cls.__state_type__ and (
-                get_origin(sig.return_annotation) is Literal
-                and any(
-                    (
-                        type(r) is not cls.__state_type__
-                        for r in get_args(sig.return_annotation)
-                    )
-                )
+        for attr_name in dir(cls):
+            if callable(f := getattr(cls, attr_name)) and isinstance(
+                e := getattr(f, STATE_TAG, None), type(start_state)
             ):
-                raise StateMachineCompilationError(
-                    f"Method `{func.__qualname__}` does not have the same return type as `{cls.update.__qualname__}`: {sig.return_annotation} != {update_signature.return_annotation}"
+                f_bis = cls.__state_transitions__.setdefault(
+                    e,
+                    cast(
+                        Callable[
+                            Concatenate[Self, P],
+                            StateEnumT,
+                        ],
+                        f,
+                    ),
                 )
+                if f_bis is not f:
+                    raise StateMachineCompilationError(
+                        f"There are multiple transitions registered for Enum member '{e}': trying to register '{f.__qualname__}' but '{f_bis.__qualname__}' was already registered."
+                    )
 
     def __init__(self) -> None:
         self.state = self.__start_state__
@@ -101,35 +101,45 @@ class StateMachine(Generic[StateEnumT, P]):
         return self.state
 
 
-ST = TypeVar("ST", bound=StateMachine, covariant=True)
-ST_bis = TypeVar("ST_bis", bound=StateMachine)
-
-
 def _register_transition(
     from_state: StateEnumT,
-    _spec: Callable[Concatenate[ST, P], StateEnumT],
-) -> Callable[
-    [Callable[Concatenate[ST, P], StateEnumT]],
-    Callable[Concatenate[ST, P], StateEnumT],
-]:
+    _spec: TransitionMethodType[ST, P, StateEnumT],
+) -> TransitionDecoratorType[ST, P, StateEnumT]:
+    ref_sig = inspect.signature(_spec)
+
     def inner_register(
         func: Callable[Concatenate[ST, P], StateEnumT],
     ) -> Callable[Concatenate[ST, P], StateEnumT]:
+        sig = inspect.signature(func)
+        if sig.parameters != ref_sig.parameters:
+            raise StateMachineCompilationError(
+                f"Method `{func.__qualname__}` does not have the same signature as `{ref_sig.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
+            )
+
+        if sig.return_annotation is not type(from_state) and (
+            get_origin(sig.return_annotation) is Literal
+            and any(
+                (
+                    type(r) is not type(from_state)
+                    for r in get_args(sig.return_annotation)
+                )
+            )
+        ):
+            raise StateMachineCompilationError(
+                f"Method `{func.__qualname__}` does not have the same return type as `{ref_sig.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
+            )
         setattr(func, STATE_TAG, from_state)
         return func
 
     return inner_register
 
 
-def fake_signature(
-    real_func: Callable[Concatenate[ST, P_bis], StateEnumT] = StateMachine.update,
-) -> Callable[
-    [Callable[Concatenate[ST_bis, P], StateEnumT_bis]],
-    Callable[Concatenate[ST_bis, P], StateEnumT_bis],
-]:
+def overload_signature(
+    real_func: TransitionMethodType[ST, P, StateEnumT] = StateMachine.update,
+) -> TransitionDecoratorType[ST_bis, P_bis, StateEnumT_bis]:
     def inner(
-        func: Callable[Concatenate[ST_bis, P], StateEnumT_bis],
-    ) -> Callable[Concatenate[ST_bis, P], StateEnumT_bis]:
+        func: TransitionMethodType[ST_bis, P_bis, StateEnumT_bis],
+    ) -> TransitionMethodType[ST_bis, P_bis, StateEnumT_bis]:
         if TYPE_CHECKING:
             return func
 
@@ -146,21 +156,13 @@ def fake_signature(
     return inner
 
 
-class TestE(Enum):
-    ON = 1
-    OFF = 2
-
-
 @contextmanager
 def define_transitions(
-    spec_func: Callable[Concatenate[ST, P], StateEnumT],
+    spec_func: TransitionMethodType[ST, P, StateEnumT],
 ) -> Generator[
     Callable[
         [StateEnumT],
-        Callable[
-            [Callable[Concatenate[ST, P], StateEnumT]],
-            Callable[Concatenate[ST, P], StateEnumT],
-        ],
+        TransitionDecoratorType[ST, P, StateEnumT],
     ],
     None,
     None,
@@ -168,8 +170,13 @@ def define_transitions(
     yield functools.partial(_register_transition, _spec=spec_func)
 
 
+class TestE(Enum):
+    ON = 1
+    OFF = 2
+
+
 class MyStateMachine(StateMachine[TestE, P], start_state=TestE.ON):
-    @fake_signature()
+    @overload_signature()
     def update(self, a: int, b: int) -> TestE: ...
 
     with define_transitions(spec_func=update) as new:
@@ -191,7 +198,7 @@ print(m.update(1, 2))
 
 
 class OtherStateMachine(StateMachine[TestE, P], start_state=TestE.ON):
-    @fake_signature()
+    @overload_signature()
     def update(self) -> TestE: ...
 
     with define_transitions(spec_func=update) as new:
@@ -207,3 +214,5 @@ class OtherStateMachine(StateMachine[TestE, P], start_state=TestE.ON):
 
 m = OtherStateMachine()
 u = m.update()
+
+print(inspect.signature(OtherStateMachine.on_to_off).return_annotation)

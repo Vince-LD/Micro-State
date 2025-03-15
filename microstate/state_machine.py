@@ -57,18 +57,6 @@ class StateMachine(Generic[StateEnumT, P]):
         cls.__state_type__ = type(start_state)
         cls.__start_state__ = start_state
 
-        cls.__state_transitions__ = cast(
-            dict[
-                StateEnumT,
-                TransitionMethodType[Self, P, StateEnumT],
-            ],
-            {
-                e: f
-                for fname in dir(cls)
-                if callable(f := getattr(cls, fname))
-                and isinstance(e := getattr(f, STATE_TAG, None), cls.__state_type__)
-            },
-        )
         for attr_name in dir(cls):
             if callable(f := getattr(cls, attr_name)) and isinstance(
                 e := getattr(f, STATE_TAG, None), cls.__state_type__

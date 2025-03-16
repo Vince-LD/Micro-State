@@ -9,6 +9,7 @@ from typing import (
     Generator,
     Generic,
     Literal,
+    Optional,
     ParamSpec,
     Self,
     TypeAlias,
@@ -16,6 +17,7 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    overload,
 )
 
 STATE_TAG = "__tagged_state__"
@@ -121,9 +123,31 @@ def _register_transition(
     return inner_register
 
 
+@overload
 def overload_signature(
+    *,
     real_func: TransitionMethodType[ST, P, StateEnumT] = StateMachine.update,
-) -> TransitionDecoratorType[ST_bis, P_bis, StateEnumT_bis]:
+) -> TransitionDecoratorType[ST_bis, P_bis, StateEnumT_bis]: ...
+
+
+@overload
+def overload_signature(
+    func: TransitionMethodType[ST_bis, P_bis, StateEnumT_bis],
+    /,
+    *,
+    real_func: TransitionMethodType[ST, P, StateEnumT] = StateMachine.update,
+) -> TransitionMethodType[ST_bis, P_bis, StateEnumT_bis]: ...
+
+
+def overload_signature(
+    func: Optional[TransitionMethodType[ST_bis, P_bis, StateEnumT_bis]] = None,
+    /,
+    *,
+    real_func: TransitionMethodType[ST, P, StateEnumT] = StateMachine.update,
+) -> (
+    TransitionDecoratorType[ST_bis, P_bis, StateEnumT_bis]
+    | TransitionMethodType[ST_bis, P_bis, StateEnumT_bis]
+):
     def inner(
         func: TransitionMethodType[ST_bis, P_bis, StateEnumT_bis],
     ) -> TransitionMethodType[ST_bis, P_bis, StateEnumT_bis]:
@@ -140,7 +164,10 @@ def overload_signature(
 
             return wrapper
 
-    return inner
+    if func is None:
+        return inner
+
+    return inner(func)
 
 
 @contextmanager

@@ -7,7 +7,6 @@ from microstate import (
     define_transitions,
     overload_signature,
     P,
-    BaseStateMachineError,
     StateMachineCompilationError,
 )
 
@@ -30,7 +29,7 @@ class EnumTestState(Enum):
 class ValidStateMachine(
     StateMachine[EnumTestState, P], start_state=EnumTestState.A
 ):  # Nécessaire pour stocker les transitions
-    @overload_signature()
+    @overload_signature
     def update(self) -> EnumTestState: ...
 
     with define_transitions(update) as transition:
@@ -50,7 +49,7 @@ class NoTransitionStateMachine(
 
 # Cas de basculement : deux transitions, de A vers B puis de B vers A.
 class ToggleStateMachine(StateMachine[EnumTestState, P], start_state=EnumTestState.A):
-    @overload_signature()
+    @overload_signature
     def update(self) -> EnumTestState: ...
 
     with define_transitions(update) as transition:
@@ -69,7 +68,7 @@ def create_duplicate_transition_class():
     class DuplicateTransitionStateMachine(
         StateMachine[EnumTestState, P], start_state=EnumTestState.A
     ):
-        @overload_signature()
+        @overload_signature
         def update(self) -> EnumTestState: ...
 
         with define_transitions(update) as transition:
@@ -90,7 +89,7 @@ def create_invalid_signature_class():
     class InvalidSignatureStateMachine(
         StateMachine[EnumTestState, P], start_state=EnumTestState.A
     ):
-        @overload_signature()
+        @overload_signature
         def update(self) -> EnumTestState: ...
 
         with define_transitions(update) as transition:
@@ -117,12 +116,12 @@ def create_wrong_return_type_class():
 
 
 # Pour tester overload_signature, on définit une fonction réelle et une fonction à décorer.
-def dummy_real_func(self, x: int) -> int:
-    return x + 1
+def dummy_real_func(self, x: int) -> EnumTestState:
+    return EnumTestState.A
 
 
-def dummy_func_to_decorate(self, x: int) -> int:
-    return 42
+def dummy_func_to_decorate(self, x: int) -> EnumTestState:
+    return EnumTestState.A
 
 
 # --- Suite de tests ---
@@ -169,10 +168,12 @@ class TestStateMachineLibrary(unittest.TestCase):
 
     def test_overload_signature_decorator(self):
         # Décore une fonction avec overload_signature et vérifie que la signature est préservée
-        decorated = overload_signature(dummy_real_func)(dummy_func_to_decorate)
+        decorated = overload_signature(real_func=dummy_real_func)(
+            dummy_func_to_decorate
+        )
         self.assertEqual(
-            str(inspect.signature(decorated)),
-            str(inspect.signature(dummy_func_to_decorate)),
+            inspect.signature(decorated),
+            inspect.signature(dummy_func_to_decorate),
         )
 
         # Vérifie que l'appel à la fonction décorée exécute bien dummy_real_func.
@@ -183,7 +184,7 @@ class TestStateMachineLibrary(unittest.TestCase):
 
         dummy = Dummy()
         result = decorated(dummy, 3)
-        self.assertEqual(result, 4)
+        self.assertEqual(result, EnumTestState.A)
 
 
 if __name__ == "__main__":

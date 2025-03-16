@@ -58,6 +58,7 @@ class StateMachine(Generic[StateEnumT, P]):
         cls.__start_state__ = start_state
         cls.__current_state__ = start_state
 
+        cls.__state_transitions__ = {}
         for attr_name in dir(cls):
             if callable(f := getattr(cls, attr_name)) and isinstance(
                 e := getattr(f, STATE_TAG, None), cls.__state_type__
@@ -99,7 +100,7 @@ def _register_transition(
         sig = inspect.signature(func)
         if sig.parameters != ref_sig.parameters:
             raise StateMachineCompilationError(
-                f"Method `{func.__qualname__}` does not have the same signature as `{ref_sig.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
+                f"Method `{func.__qualname__}` does not have the same signature as `{_spec.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
             )
 
         if sig.return_annotation is not type(from_state) and (

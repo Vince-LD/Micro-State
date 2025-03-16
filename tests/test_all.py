@@ -94,7 +94,7 @@ def create_invalid_signature_class():
 
         with define_transitions(update) as transition:
             # La méthode attend un paramètre supplémentaire, ce qui diffère de la signature de StateMachine.update
-            @transition(EnumTestState.A)
+            @transition(EnumTestState.A)  # type: ignore -- This is      flagged by pyright as an error
             def invalid(self, extra: int) -> EnumTestState:
                 return EnumTestState.B
 
@@ -108,7 +108,7 @@ def create_wrong_return_type_class():
     ):
         with define_transitions(StateMachine.update) as transition:
             # Ici, on indique un type Literal qui ne correspond pas au type attendu (TestState)
-            @transition(EnumTestState.A)
+            @transition(EnumTestState.A)  # type: ignore -- This is rightfully flagged by pyright as an error
             def wrong_return(self) -> Literal[42]:
                 return 42
 

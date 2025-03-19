@@ -23,19 +23,19 @@ from typing import (
 )
 
 
-StateEnumT = TypeVar("StateEnumT", bound=Enum)
 P = ParamSpec("P")
-SMT = TypeVar("SMT", bound="StateMachine")
+StateEnumT = TypeVar("StateEnumT", bound=Enum)
+StateMachineT = TypeVar("StateMachineT", bound="StateMachine")
 
 
-TransitionMethodType: TypeAlias = Callable[Concatenate[SMT, P], StateEnumT]
+TransitionMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], StateEnumT]
 
 
 @runtime_checkable
-class DecoratedTransitionProtocol(Protocol[SMT, P, StateEnumT]):
+class DecoratedTransitionProtocol(Protocol[StateMachineT, P, StateEnumT]):
     _state_tag: StateEnumT
 
-    __call__: TransitionMethodType[SMT, P, StateEnumT]
+    __call__: TransitionMethodType[StateMachineT, P, StateEnumT]
 
 
 class BaseStateMachineError(BaseException): ...
@@ -93,15 +93,21 @@ class StateMachine(Generic[StateEnumT, P]):
         return self._current_state
 
 
+TransitionDecoratorType: TypeAlias = Callable[
+    [TransitionMethodType[StateMachineT, P, StateEnumT]],
+    DecoratedTransitionProtocol[StateMachineT, P, StateEnumT],
+]
+
+
 def _register_transition(
     from_state: StateEnumT,
-    _spec: TransitionMethodType[SMT, P, StateEnumT],
-):  # -> Callable[..., TransitionProtocol[P, StateEnumT]]:
+    _spec: TransitionMethodType[StateMachineT, P, StateEnumT],
+) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
     ref_sig = inspect.signature(_spec)
 
     def inner_register(
-        func: Callable[Concatenate[SMT, P], StateEnumT],
-    ) -> DecoratedTransitionProtocol[SMT, P, StateEnumT]:
+        func: TransitionMethodType[StateMachineT, P, StateEnumT],
+    ) -> DecoratedTransitionProtocol[StateMachineT, P, StateEnumT]:
         sig = inspect.signature(func)
         if sig.parameters != ref_sig.parameters:
             raise StateMachineCompilationError(
@@ -120,7 +126,7 @@ def _register_transition(
             raise StateMachineCompilationError(
                 f"Method `{func.__qualname__}` does not have the same return type as `{_spec.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
             )
-        func = cast(DecoratedTransitionProtocol[SMT, P, StateEnumT], func)
+        func = cast(DecoratedTransitionProtocol[StateMachineT, P, StateEnumT], func)
         func._state_tag = from_state
 
         if not isinstance(func, DecoratedTransitionProtocol):
@@ -132,46 +138,40 @@ def _register_transition(
     return inner_register
 
 
-TransitionDecoratorType: TypeAlias = Callable[
-    [TransitionMethodType[SMT, P, StateEnumT]],
-    DecoratedTransitionProtocol[SMT, P, StateEnumT],
-]
-
-
 @overload
 def overload_signature(
     *,
-    real_func: TransitionMethodType[SMT, P, StateEnumT] = StateMachine.update,
-) -> TransitionDecoratorType[SMT, P, StateEnumT]: ...
+    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
 
 
 @overload
 def overload_signature(
-    func: TransitionMethodType[SMT, P, StateEnumT],
+    func: TransitionMethodType[StateMachineT, P, StateEnumT],
     /,
     *,
-    real_func: TransitionMethodType[SMT, P, StateEnumT] = StateMachine.update,
-) -> TransitionMethodType[SMT, P, StateEnumT]: ...
+    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+) -> TransitionMethodType[StateMachineT, P, StateEnumT]: ...
 
 
 SignatureOverloadDecoratorType: TypeAlias = Callable[
-    [TransitionMethodType[SMT, P, StateEnumT]],
-    TransitionMethodType[SMT, P, StateEnumT],
+    [TransitionMethodType[StateMachineT, P, StateEnumT]],
+    TransitionMethodType[StateMachineT, P, StateEnumT],
 ]
 
 
 def overload_signature(
-    func: Optional[TransitionMethodType[SMT, P, StateEnumT]] = None,
+    func: Optional[TransitionMethodType[StateMachineT, P, StateEnumT]] = None,
     /,
     *,
-    real_func: TransitionMethodType[SMT, P, StateEnumT] = StateMachine.update,
+    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
 ) -> (
-    SignatureOverloadDecoratorType[SMT, P, StateEnumT]
-    | TransitionMethodType[SMT, P, StateEnumT]
+    SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
+    | TransitionMethodType[StateMachineT, P, StateEnumT]
 ):
     def inner(
-        func: TransitionMethodType[SMT, P, StateEnumT],
-    ) -> TransitionMethodType[SMT, P, StateEnumT]:
+        func: TransitionMethodType[StateMachineT, P, StateEnumT],
+    ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
         if TYPE_CHECKING:
             return func
         else:
@@ -187,11 +187,11 @@ def overload_signature(
 
 @contextmanager
 def define_transitions(
-    spec_func: TransitionMethodType[SMT, P, StateEnumT],
+    spec_func: TransitionMethodType[StateMachineT, P, StateEnumT],
 ) -> Generator[
     Callable[
         [StateEnumT],
-        TransitionDecoratorType[SMT, P, StateEnumT],
+        TransitionDecoratorType[StateMachineT, P, StateEnumT],
     ],
     None,
     None,

@@ -1,5 +1,5 @@
 import unittest
-from enum import Enum
+from enum import Enum, auto
 import inspect
 from typing import Literal
 from microstate import (
@@ -10,66 +10,78 @@ from microstate import (
     StateMachineCompilationError,
 )
 
-# --- Code de la librairie à tester ---
-# (On suppose que le code de la librairie est déjà présent dans le même module.)
-#
-# Voici les principaux éléments utilisés dans les tests :
-# - StateMachine, StateMachineCompilationError, define_transitions, overload_signature
-#
-# --------------------------------------------------
 
-
-# Exemple d'Enum pour les états
 class EnumTestState(Enum):
-    A = "A"
-    B = "B"
+    """Example Enum for states."""
+    A = auto()
+    B = auto()
 
 
-# Cas valide : une transition de A vers B.
-class ValidStateMachine(
-    StateMachine[EnumTestState, P], start_state=EnumTestState.A
-):  # Nécessaire pour stocker les transitions
+class ValidStateMachine(StateMachine[EnumTestState, P], start_state=EnumTestState.A):
+    """
+    A valid state machine with a transition from state A to state B.
+    
+    This machine starts in state A, and when update() is called while in state A,
+    it transitions to state B.
+    """
     @overload_signature
-    def update(self) -> EnumTestState: ...
+    def update(self) -> EnumTestState: 
+        ...
 
     with define_transitions(update) as transition:
 
         @transition(EnumTestState.A)
         def to_B(self) -> EnumTestState:
+            """Transition from state A to state B."""
             return EnumTestState.B
 
 
-# Cas sans transition : la machine doit rester dans le même état.
-class NoTransitionStateMachine(
-    StateMachine[EnumTestState, P], start_state=EnumTestState.A
-):
-    # Aucune transition n'est définie
+class NoTransitionStateMachine(StateMachine[EnumTestState, P], start_state=EnumTestState.A):
+    """
+    A state machine with no transitions.
+    
+    Since no transition is defined, calling update() should leave the state unchanged.
+    """
+    # No transition is defined
     ...
 
 
-# Cas de basculement : deux transitions, de A vers B puis de B vers A.
 class ToggleStateMachine(StateMachine[EnumTestState, P], start_state=EnumTestState.A):
+    """
+    A state machine with toggling transitions.
+    
+    This machine toggles between state A and state B:
+    - When in state A, update() transitions to state B.
+    - When in state B, update() transitions back to state A.
+    """
     @overload_signature
-    def update(self) -> EnumTestState: ...
+    def update(self) -> EnumTestState: 
+        ...
 
     with define_transitions(update) as transition:
 
         @transition(EnumTestState.A)
         def to_B(self) -> EnumTestState:
+            """Transition from state A to state B."""
             return EnumTestState.B
 
         @transition(EnumTestState.B)
         def to_A(self) -> EnumTestState:
+            """Transition from state B to state A."""
             return EnumTestState.A
 
 
-# Fonction utilitaire pour générer une classe avec deux transitions pour le même état (erreur attendue)
 def create_duplicate_transition_class():
+    """
+    Utility function that creates a state machine class with two transitions
+    for the same state. This should raise a compilation error.
+    """
     class DuplicateTransitionStateMachine(
         StateMachine[EnumTestState, P], start_state=EnumTestState.A
     ):
         @overload_signature
-        def update(self) -> EnumTestState: ...
+        def update(self) -> EnumTestState: 
+            ...
 
         with define_transitions(update) as transition:
 
@@ -84,30 +96,38 @@ def create_duplicate_transition_class():
     return DuplicateTransitionStateMachine
 
 
-# Fonction utilitaire pour générer une classe avec une signature invalide (erreur attendue)
 def create_invalid_signature_class():
+    """
+    Utility function that creates a state machine class with a transition method
+    having an invalid signature. An error is expected because the signature does not match.
+    """
     class InvalidSignatureStateMachine(
         StateMachine[EnumTestState, P], start_state=EnumTestState.A
     ):
         @overload_signature
-        def update(self) -> EnumTestState: ...
+        def update(self) -> EnumTestState: 
+            ...
 
         with define_transitions(update) as transition:
-            # La méthode attend un paramètre supplémentaire, ce qui diffère de la signature de StateMachine.update
-            @transition(EnumTestState.A)  # type: ignore -- This is      flagged by pyright as an error
+            # The method expects an extra parameter, which differs from the signature of StateMachine.update
+            @transition(EnumTestState.A)  # type: ignore -- This is flagged by pyright as an error
             def invalid(self, extra: int) -> EnumTestState:
                 return EnumTestState.B
 
     return InvalidSignatureStateMachine
 
 
-# Fonction utilitaire pour générer une classe avec un type de retour incorrect (erreur attendue)
 def create_wrong_return_type_class():
+    """
+    Utility function that creates a state machine class with a transition method
+    that has an incorrect return type. An error is expected because the return type
+    does not match the expected state type.
+    """
     class WrongReturnTypeStateMachine(
         StateMachine[EnumTestState, P], start_state=EnumTestState.A
     ):
         with define_transitions(StateMachine.update) as transition:
-            # Ici, on indique un type Literal qui ne correspond pas au type attendu (TestState)
+            # Here, the return type is indicated as a Literal that does not correspond to the expected EnumTestState.
             @transition(EnumTestState.A)  # type: ignore -- This is rightfully flagged by pyright as an error
             def wrong_return(self) -> Literal[42]:
                 return 42
@@ -115,69 +135,108 @@ def create_wrong_return_type_class():
     return WrongReturnTypeStateMachine
 
 
-# Pour tester overload_signature, on définit une fonction réelle et une fonction à décorer.
+# For testing overload_signature, we define a real function and a function to decorate.
 def dummy_real_func(self, x: int) -> EnumTestState:
+    """Dummy real function to be wrapped by overload_signature."""
     return EnumTestState.A
 
 
 def dummy_func_to_decorate(self, x: int) -> EnumTestState:
+    """Dummy function that will be decorated by overload_signature."""
     return EnumTestState.A
 
 
-# --- Suite de tests ---
 class TestStateMachineLibrary(unittest.TestCase):
+    """Test suite for the state machine library."""
+
     def test_valid_transition(self):
+        """
+        Test that a valid transition from state A to state B works correctly.
+        
+        It verifies:
+        - The initial state is A.
+        - Calling update() transitions from A to B.
+        - The current state is updated to B.
+        """
         machine = ValidStateMachine()
-        # Au départ, l'état doit être A
         self.assertEqual(machine.current_state, EnumTestState.A)
-        # Après update, la transition A -> B doit s'effectuer
         new_state = machine.update()
         self.assertEqual(new_state, EnumTestState.B)
         self.assertEqual(machine.current_state, EnumTestState.B)
 
     def test_no_transition(self):
+        """
+        Test that a state machine with no defined transitions remains in the same state.
+        
+        It verifies:
+        - The initial state is A.
+        - Calling update() returns the same state (A).
+        """
         machine = NoTransitionStateMachine()
         self.assertEqual(machine.current_state, EnumTestState.A)
-        # Sans transition, update renvoie le même état
         new_state = machine.update()
         self.assertEqual(new_state, EnumTestState.A)
         self.assertEqual(machine.current_state, EnumTestState.A)
 
     def test_toggle_state_machine(self):
+        """
+        Test a state machine that toggles between state A and state B.
+        
+        It verifies:
+        - The machine starts in state A.
+        - The first update() call transitions to state B.
+        - The second update() call transitions back to state A.
+        """
         machine = ToggleStateMachine()
         self.assertEqual(machine.current_state, EnumTestState.A)
-        new_state = machine.update()  # Doit passer à B
+        new_state = machine.update()  # Should transition to B.
         self.assertEqual(new_state, EnumTestState.B)
-        new_state = machine.update()  # Doit repasser à A
+        new_state = machine.update()  # Should transition back to A.
         self.assertEqual(new_state, EnumTestState.A)
 
     def test_duplicate_transition_error(self):
-        # Une erreur doit être levée lors de la compilation de la machine
+        """
+        Test that defining two transitions for the same state raises an error.
+        
+        A StateMachineCompilationError is expected when duplicate transitions for the same state are detected.
+        """
         with self.assertRaises(StateMachineCompilationError):
             create_duplicate_transition_class()
 
     def test_invalid_signature_error(self):
-        # Une erreur doit être levée si la signature de la méthode décorée ne correspond pas
+        """
+        Test that a transition method with an invalid signature raises an error.
+        
+        The method in the generated class has an extra parameter compared to the expected signature,
+        so a StateMachineCompilationError should be raised.
+        """
         with self.assertRaises(StateMachineCompilationError):
             create_invalid_signature_class()
 
     def test_wrong_return_type_error(self):
-        # Une erreur doit être levée si l'annotation de type de retour est incorrecte
+        """
+        Test that a transition method with an incorrect return type annotation raises an error.
+        
+        A StateMachineCompilationError is expected if the return type of the transition does not match the expected type.
+        """
         with self.assertRaises(StateMachineCompilationError):
             create_wrong_return_type_class()
 
     def test_overload_signature_decorator(self):
-        # Décore une fonction avec overload_signature et vérifie que la signature est préservée
-        decorated = overload_signature(real_func=dummy_real_func)(
-            dummy_func_to_decorate
-        )
+        """
+        Test that the overload_signature decorator preserves the signature and correctly delegates calls.
+        
+        It verifies:
+        - The decorated function retains the signature of the original function.
+        - Calling the decorated function executes the real function (dummy_real_func) as expected.
+        """
+        decorated = overload_signature(real_func=dummy_real_func)(dummy_func_to_decorate)
         self.assertEqual(
             inspect.signature(decorated),
             inspect.signature(dummy_func_to_decorate),
         )
 
-        # Vérifie que l'appel à la fonction décorée exécute bien dummy_real_func.
-        # Pour cela, on simule un appel avec un objet dummy.
+        # Verify that calling the decorated function executes dummy_real_func.
         class Dummy:
             def dummy_real_func(self, x: int) -> int:
                 return x + 1

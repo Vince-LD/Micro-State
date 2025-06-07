@@ -38,10 +38,12 @@ from typing import (
     Callable,
     Concatenate,
     Generic,
+    Iterable,
     Literal,
     Optional,
     ParamSpec,
     Self,
+    Sequence,
     TypeAlias,
     TypeVar,
     get_args,
@@ -50,11 +52,18 @@ from typing import (
 )
 
 P = ParamSpec("P")
+P_bis = ParamSpec("P_bis")
+R = TypeVar("R")
 StateEnumT = TypeVar("StateEnumT", bound=Enum)
-StateMachineT = TypeVar("StateMachineT", bound="StateMachine", contravariant=True)
+StateMachineT = TypeVar("StateMachineT", bound="StateMachine", covariant=True)
+OtherStateMachineT: TypeAlias = StateMachineT
 
 
-TransitionMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], StateEnumT]
+SpecMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], StateEnumT]
+TransitionMethodType: TypeAlias = Callable[
+    Concatenate[StateMachineT, P], Optional[StateEnumT]
+]
+ManualTransitionMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], R]
 
 
 class BaseStateMachineError(BaseException): ...
@@ -72,15 +81,71 @@ class TransitionFrozenError(StateMachineCompilationError): ...
 class TransitionNotFrozenError(StateMachineCompilationError): ...
 
 
+class InvalidStateInput(StateMachineCompilationError): ...
+
+
 TransitionDecoratorType: TypeAlias = Callable[
     [TransitionMethodType[StateMachineT, P, StateEnumT]],
     TransitionMethodType[StateMachineT, P, StateEnumT],
 ]
 
 
-class TransitionRegistry(Generic[StateMachineT, P, StateEnumT]):
+class StateMachine(Generic[StateEnumT, P]):
+    _state_type: type[StateEnumT]
+    _state_transitions_: dict[
+        StateEnumT,
+        tuple[TransitionMethodType[Self, P, StateEnumT], ...],
+    ]
+    _start_state: StateEnumT
+    _current_state: StateEnumT
+
+    def __init_subclass__(
+        cls,
+        start_state: Optional[StateEnumT] | None = None,
+        inherit_transitions: bool = True,
+    ) -> None:
+        if start_state is None:
+            try:
+                start_state = cls._start_state
+            except AttributeError:
+                raise StateMachineCompilationError(
+                    "The starting state was not defined in parent classes. "
+                    f"Use `start_state` argument when inheriting from {StateMachine}"
+                )
+
+        cls._state_type = type(start_state)
+        cls._start_state = start_state
+        cls._current_state = start_state
+
+        if not inherit_transitions or StateMachine in cls.__bases__:
+            cls._state_transitions_ = {}
+
+        for attr_name in dir(cls):
+            if not isinstance(register := getattr(cls, attr_name), Transitions):
+                continue
+
+            cls._state_transitions_.update(register.get_transitions())
+
+    @property
+    def current_state(self) -> StateEnumT:
+        return self._current_state
+
+    @current_state.setter
+    def current_state(self, state: Optional[StateEnumT]):
+        self._current_state = state or self._current_state
+
+    def update(self, *args: P.args, **kwargs: P.kwargs) -> StateEnumT:
+        for transition_func in self._state_transitions_.get(self._current_state, ()):
+            new_state = transition_func(self, *args, **kwargs)
+            if new_state is not None:
+                self._current_state = new_state
+                break
+        return self._current_state
+
+
+class Transitions(Generic[StateMachineT, P, StateEnumT]):
     def __init__(
-        self, _spec: TransitionMethodType[StateMachineT, P, StateEnumT]
+        self, _spec: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update
     ) -> None:
         self._transitions: dict[
             StateEnumT, list[TransitionMethodType[StateMachineT, P, StateEnumT]]
@@ -93,13 +158,27 @@ class TransitionRegistry(Generic[StateMachineT, P, StateEnumT]):
 
     def new(
         self,
-        from_state: StateEnumT,
+        from_states: Sequence[StateEnumT] | StateEnumT,
     ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
         ref_sig = inspect.signature(self._spec)
 
         if self._frozen:
             raise TransitionFrozenError(
                 "The transitions were already frozen. You cannot add new transitions afterwards."
+            )
+
+        if not isinstance(from_states, Iterable):
+            from_states = (from_states,)
+
+        if not len(from_states) >= 1:
+            raise InvalidStateInput(
+                "You must give at least one state to argument `from_states`"
+            )
+
+        state_type = type(from_states[0])
+        if not all(map(lambda s: isinstance(s, state_type), from_states)):
+            raise InvalidStateInput(
+                f"All state inputs must be of the same type ({tuple(type(s) for s in state_type)} != {state_type})"
             )
 
         def inner_register(
@@ -111,21 +190,26 @@ class TransitionRegistry(Generic[StateMachineT, P, StateEnumT]):
                     f"Method `{func.__qualname__}` does not have the same signature as `{self._spec.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
                 )
 
-            if sig.return_annotation is not type(from_state) and (
+            if sig.return_annotation is not state_type and (
                 get_origin(sig.return_annotation) is Literal
                 and any(
-                    (
-                        type(r) is not type(from_state)
-                        for r in get_args(sig.return_annotation)
-                    )
+                    (type(r) is not state_type for r in get_args(sig.return_annotation))
                 )
             ):
                 raise TransitionSignatureError(
                     f"Method `{func.__qualname__}` does not have the same return type as `{self._spec.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
                 )
 
-            transition_list = self._transitions.setdefault(from_state, [])
-            transition_list.append(func)
+            for state in from_states:
+                transition_list = self._transitions.setdefault(state, [])
+                transition_list.append(func)
+
+            @functools.wraps(func)
+            def transition_func(
+                self: StateMachineT, *args: P.args, **kwargs: P.kwargs
+            ) -> Optional[StateEnumT]:
+                self.current_state = func(self, *args, **kwargs)
+                return self.current_state
 
             return func
 
@@ -163,84 +247,57 @@ class TransitionRegistry(Generic[StateMachineT, P, StateEnumT]):
             )
         return self._frozen_transitions
 
+    @staticmethod
+    def manual_transition(
+        # self,
+        func: ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]],
+    ) -> ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]]:
+        @functools.wraps(func)
+        def inner_wrapper(
+            self: StateMachineT, *args: P_bis.args, **kwargs: P_bis.kwargs
+        ) -> StateEnumT:
+            result = func(self, *args, **kwargs)
+            if result is not None:
+                self.current_state = result
+            return self.current_state
 
-class StateMachine(Generic[StateEnumT, P]):
-    _state_type: type[StateEnumT]
-    _state_transitions_: dict[
-        StateEnumT,
-        tuple[TransitionMethodType[Self, P, StateEnumT], ...],
-    ]
-    _start_state: StateEnumT
-    _current_state: StateEnumT
-
-    def __init_subclass__(
-        cls, start_state: StateEnumT, inherit_transitions: bool = True
-    ) -> None:
-        super().__init_subclass__()
-        cls._state_type = type(start_state)
-        cls._start_state = start_state
-        cls._current_state = start_state
-
-        if not inherit_transitions or StateMachine in cls.__bases__:
-            cls._state_transitions_ = {}
-
-        for attr_name in dir(cls):
-            if not isinstance(register := getattr(cls, attr_name), TransitionRegistry):
-                continue
-
-            cls._state_transitions_.update(register.get_transitions())
-
-    @property
-    def current_state(self) -> StateEnumT:
-        return self._current_state
-
-    @current_state.setter
-    def current_state(self, state: StateEnumT):
-        self._current_state = state
-
-    def update(self, *args: P.args, **kwargs: P.kwargs) -> StateEnumT:
-        for transition_func in self._state_transitions_.get(self._current_state, ()):
-            new_state = transition_func(self, *args, **kwargs)
-            if new_state != self._current_state:
-                self._current_state = new_state
-                break
-        return self._current_state
+        return inner_wrapper
 
 
 @overload
 def overload_signature(
     *,
-    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+    real_func: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
 ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
 
 
 @overload
 def overload_signature(
-    func: TransitionMethodType[StateMachineT, P, StateEnumT],
+    func: SpecMethodType[StateMachineT, P, StateEnumT],
     /,
     *,
-    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
-) -> TransitionMethodType[StateMachineT, P, StateEnumT]: ...
+    real_func: SpecMethodType[OtherStateMachineT, P, StateEnumT] = StateMachine.update,
+) -> SpecMethodType[OtherStateMachineT, P, StateEnumT]: ...
 
 
 SignatureOverloadDecoratorType: TypeAlias = Callable[
-    [TransitionMethodType[StateMachineT, P, StateEnumT]],
-    TransitionMethodType[StateMachineT, P, StateEnumT],
+    [SpecMethodType[StateMachineT, P, StateEnumT]],
+    TransitionMethodType[OtherStateMachineT, P, StateEnumT],
 ]
 
 
 def overload_signature(
-    func: Optional[TransitionMethodType[StateMachineT, P, StateEnumT]] = None,
+    func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
     /,
     *,
-    real_func: TransitionMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+    real_func: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
 ) -> (
     SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
-    | TransitionMethodType[StateMachineT, P, StateEnumT]
+    | TransitionMethodType[OtherStateMachineT, P, StateEnumT]
 ):
     def inner(
-        func: TransitionMethodType[StateMachineT, P, StateEnumT],
-    ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
+        func: TransitionMethodType[OtherStateMachineT, P, StateEnumT],
+    ) -> TransitionMethodType[OtherStateMachineT, P, StateEnumT]:
         if TYPE_CHECKING:
             return func
         else:

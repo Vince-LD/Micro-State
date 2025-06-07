@@ -2,9 +2,8 @@ from enum import Enum, auto
 from typing import Literal, Optional
 from microstate import (
     StateMachine,
-    define_transitions,
+    TransitionRegistry,
     overload_signature,
-    P,
 )
 
 
@@ -24,15 +23,13 @@ class Item(Enum):
     FEATHER = auto()
 
 
-class SuperMarioStateMachine(
-    StateMachine[MarioState, P], start_state=MarioState.NORMAL
-):
+class SuperMarioStateMachine(StateMachine, start_state=MarioState.NORMAL):
     @overload_signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
 
-    with define_transitions(update) as transition:
+    with TransitionRegistry(update) as register:
         # All transitions encode state changes when Mario picks up an item (or not!)
-        @transition(MarioState.NORMAL)
+        @register.new(MarioState.NORMAL)
         def from_mario(
             self, item: Optional[Item] = None
         ) -> Literal[
@@ -48,7 +45,7 @@ class SuperMarioStateMachine(
 
             return MarioState.NORMAL
 
-        @transition(MarioState.SUPER)
+        @register.new(MarioState.SUPER)
         def from_super_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.FIRE, MarioState.CAPE, MarioState.SUPER]:
@@ -59,7 +56,7 @@ class SuperMarioStateMachine(
                     return MarioState.CAPE
             return MarioState.SUPER
 
-        @transition(MarioState.FIRE)
+        @register.new(MarioState.FIRE)
         def from_fire_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.CAPE, MarioState.FIRE]:
@@ -67,7 +64,7 @@ class SuperMarioStateMachine(
                 return MarioState.CAPE
             return MarioState.FIRE
 
-        @transition(MarioState.CAPE)
+        @register.new(MarioState.CAPE)
         def from_cape_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.FIRE, MarioState.CAPE]:
@@ -89,7 +86,7 @@ class SuperMarioStateMachine(
             return self.current_state
 
 
-if __name__ == "__main__":
+def main():
     # We launch the game
     mario = SuperMarioStateMachine()
 
@@ -112,3 +109,7 @@ if __name__ == "__main__":
     assert mario.update(Item.FLOWER) is MarioState.GAME_OVER
     # This is just beating a dead horse already!
     assert mario.take_damage() is MarioState.GAME_OVER
+
+
+if __name__ == "__main__":
+    main()

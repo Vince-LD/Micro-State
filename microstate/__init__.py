@@ -33,7 +33,7 @@ __version__ = "0.9.0"
 
 from .state_machine import (
     StateMachine,
-    define_transitions,
+    TransitionRegistry,
     overload_signature,
     P,
     StateMachineCompilationError,
@@ -42,7 +42,7 @@ from .state_machine import (
 
 __all__ = (
     "StateMachine",
-    "define_transitions",
+    "TransitionRegistry",
     "overload_signature",
     "P",
     "StateMachineCompilationError",

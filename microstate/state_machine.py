@@ -200,7 +200,10 @@ class StateMachine(Generic[StateEnumT, P]):
 
     def update(self, *args: P.args, **kwargs: P.kwargs) -> StateEnumT:
         for transition_func in self._state_transitions_.get(self._current_state, ()):
-            self._current_state = transition_func(self, *args, **kwargs)
+            new_state = transition_func(self, *args, **kwargs)
+            if new_state != self._current_state:
+                self._current_state = new_state
+                break
         return self._current_state
 
 

@@ -65,6 +65,11 @@ TransitionMethodType: TypeAlias = Callable[
 ]
 ManualTransitionMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], R]
 
+SignatureOverloadDecoratorType: TypeAlias = Callable[
+    [SpecMethodType[StateMachineT, P, StateEnumT]],
+    TransitionMethodType[OtherStateMachineT, P, StateEnumT],
+]
+
 
 class BaseStateMachineError(BaseException): ...
 
@@ -158,6 +163,53 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
         ] = {}
         self._spec = _spec
         self._frozen = False
+
+    @overload
+    @staticmethod
+    def define_signature(
+        *,
+        real_func: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
+    ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
+
+    @overload
+    @staticmethod
+    def define_signature(
+        func: SpecMethodType[StateMachineT, P, StateEnumT],
+        /,
+        *,
+        real_func: SpecMethodType[
+            OtherStateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
+    ) -> SpecMethodType[OtherStateMachineT, P, StateEnumT]: ...
+
+    @staticmethod
+    def define_signature(
+        func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
+        /,
+        *,
+        real_func: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
+    ) -> (
+        SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
+        | TransitionMethodType[OtherStateMachineT, P, StateEnumT]
+    ):
+        def inner(
+            func: TransitionMethodType[OtherStateMachineT, P, StateEnumT],
+        ) -> TransitionMethodType[OtherStateMachineT, P, StateEnumT]:
+            if TYPE_CHECKING:
+                return func
+            else:
+                wrapper = functools.wraps(real_func)(real_func)
+                wrapper.__signature__ = inspect.signature(func)
+                return wrapper
+
+        if func is None:
+            return inner
+
+        return inner(func)
 
     def new(
         self,
@@ -265,56 +317,3 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
             return self.current_state
 
         return inner_wrapper
-
-
-@overload
-def overload_signature(
-    *,
-    real_func: SpecMethodType[
-        StateMachineT, P, StateEnumT
-    ] = AbstractStateMachine.update,
-) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
-
-
-@overload
-def overload_signature(
-    func: SpecMethodType[StateMachineT, P, StateEnumT],
-    /,
-    *,
-    real_func: SpecMethodType[
-        OtherStateMachineT, P, StateEnumT
-    ] = AbstractStateMachine.update,
-) -> SpecMethodType[OtherStateMachineT, P, StateEnumT]: ...
-
-
-SignatureOverloadDecoratorType: TypeAlias = Callable[
-    [SpecMethodType[StateMachineT, P, StateEnumT]],
-    TransitionMethodType[OtherStateMachineT, P, StateEnumT],
-]
-
-
-def overload_signature(
-    func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
-    /,
-    *,
-    real_func: SpecMethodType[
-        StateMachineT, P, StateEnumT
-    ] = AbstractStateMachine.update,
-) -> (
-    SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
-    | TransitionMethodType[OtherStateMachineT, P, StateEnumT]
-):
-    def inner(
-        func: TransitionMethodType[OtherStateMachineT, P, StateEnumT],
-    ) -> TransitionMethodType[OtherStateMachineT, P, StateEnumT]:
-        if TYPE_CHECKING:
-            return func
-        else:
-            wrapper = functools.wraps(real_func)(real_func)
-            wrapper.__signature__ = inspect.signature(func)
-            return wrapper
-
-    if func is None:
-        return inner
-
-    return inner(func)

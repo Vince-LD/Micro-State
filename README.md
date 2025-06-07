@@ -42,7 +42,7 @@ Then we create the base state machine that is used in all implementation example
 
 ```python
 class BaseSuperMarioMachine(StateMachine, start_state=MarioState.NORMAL):
-    @overload_signature
+    @Transitions.define_signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
 
     # You can implement "manual transitions" that will not be automatically called when 

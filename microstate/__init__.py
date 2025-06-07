@@ -33,17 +33,15 @@ __version__ = "0.9.0"
 
 from .state_machine import (
     AbstractStateMachine,
-    Transitions,
-    overload_signature,
+    BaseStateMachineError,
     P,
     StateMachineCompilationError,
-    BaseStateMachineError,
+    Transitions,
 )
 
 __all__ = (
     "AbstractStateMachine",
     "Transitions",
-    "overload_signature",
     "P",
     "StateMachineCompilationError",
     "BaseStateMachineError",

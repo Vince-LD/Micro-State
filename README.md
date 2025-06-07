@@ -41,24 +41,27 @@ class Item(Enum):
 Then we create the base state machine that is used in all implementation examples.
 
 ```python
-class BaseSuperMarioMachine(StateMachine, start_state=MarioState.NORMAL):
+class BaseSuperMarioMachine(AbstractStateMachine, init_state=MarioState.NORMAL):
+    # We define a signature that all transitions must follow
     @Transitions.define_signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
 
-    # You can implement "manual transitions" that will not be automatically called when 
+    # You can implement "manual transitions" that will not be automatically called when
     # calling the `update` method because they do not explicitely depend on the current state.
     # Then can be used to force a new current state.
-    @Transitions.manual
-    def take_damage(self) -> MarioState | None:
-        match self.current_state:
-            case MarioState.NORMAL:
-                return MarioState.GAME_OVER
-            case MarioState.SUPER:
-                return MarioState.NORMAL
-            case MarioState.GAME_OVER:
-                return MarioState.GAME_OVER
-            case _:
-                return MarioState.SUPER
+    with Transitions(update) as transitions:
+
+        @transitions.manual
+        def take_damage(self) -> MarioState | None:
+            match self.current_state:
+                case MarioState.NORMAL:
+                    return MarioState.GAME_OVER
+                case MarioState.SUPER:
+                    return MarioState.NORMAL
+                case MarioState.GAME_OVER:
+                    return MarioState.GAME_OVER
+                case _:
+                    return MarioState.SUPER
 ```
 
 Now that the base State Machine class is defined and that we saw one type of transition, let's complete the state machine. You can define every possible transitions one by one, group them when multiple different starting state can result in the same final state or mix both approaches and define a method that handles multiple transitions from a same starting state. Here, I'm going to show you the second type of implementation, where we group transitions together.

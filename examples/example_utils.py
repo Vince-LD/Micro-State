@@ -22,7 +22,7 @@ class Item(Enum):
     FEATHER = auto()
 
 
-class BaseSuperMarioMachine(AbstractStateMachine, start_state=MarioState.NORMAL):
+class BaseSuperMarioMachine(AbstractStateMachine, init_state=MarioState.NORMAL):
     # We define a signature that all transitions must follow
     @Transitions.define_signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
@@ -30,17 +30,19 @@ class BaseSuperMarioMachine(AbstractStateMachine, start_state=MarioState.NORMAL)
     # You can implement "manual transitions" that will not be automatically called when
     # calling the `update` method because they do not explicitely depend on the current state.
     # Then can be used to force a new current state.
-    @Transitions.manual
-    def take_damage(self) -> MarioState | None:
-        match self.current_state:
-            case MarioState.NORMAL:
-                return MarioState.GAME_OVER
-            case MarioState.SUPER:
-                return MarioState.NORMAL
-            case MarioState.GAME_OVER:
-                return MarioState.GAME_OVER
-            case _:
-                return MarioState.SUPER
+    with Transitions(update) as transitions:
+
+        @transitions.manual
+        def take_damage(self) -> MarioState | None:
+            match self.current_state:
+                case MarioState.NORMAL:
+                    return MarioState.GAME_OVER
+                case MarioState.SUPER:
+                    return MarioState.NORMAL
+                case MarioState.GAME_OVER:
+                    return MarioState.GAME_OVER
+                case _:
+                    return MarioState.SUPER
 
 
 def main(mario_machine_type: type[BaseSuperMarioMachine]):

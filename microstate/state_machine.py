@@ -55,19 +55,21 @@ P = ParamSpec("P")
 P_bis = ParamSpec("P_bis")
 R = TypeVar("R")
 StateEnumT = TypeVar("StateEnumT", bound=Enum)
-StateMachineT = TypeVar("StateMachineT", bound="AbstractStateMachine", covariant=True)
-OtherStateMachineT: TypeAlias = StateMachineT
+StateEnumT_bis = TypeVar("StateEnumT_bis", bound=Enum)
+StateMachineT = TypeVar(
+    "StateMachineT", bound="AbstractStateMachine", contravariant=True
+)
+StateMachineT_bis: TypeAlias = StateMachineT
 
 
 SpecMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], StateEnumT]
 TransitionMethodType: TypeAlias = Callable[
     Concatenate[StateMachineT, P], Optional[StateEnumT]
 ]
-ManualTransitionMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], R]
 
 SignatureOverloadDecoratorType: TypeAlias = Callable[
     [SpecMethodType[StateMachineT, P, StateEnumT]],
-    TransitionMethodType[OtherStateMachineT, P, StateEnumT],
+    TransitionMethodType[StateMachineT, P, StateEnumT],
 ]
 
 
@@ -101,35 +103,50 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
         StateEnumT,
         tuple[TransitionMethodType[Self, P, StateEnumT], ...],
     ]
-    _start_state: StateEnumT
+    _init_state: StateEnumT
     _current_state: StateEnumT
 
     def __init_subclass__(
         cls,
-        start_state: Optional[StateEnumT] | None = None,
+        init_state: Optional[StateEnumT] | None = None,
         inherit_transitions: bool = True,
     ) -> None:
-        if start_state is None:
+        if init_state is None:
             try:
-                start_state = cls._start_state
+                init_state = cls._init_state
             except AttributeError:
                 raise StateMachineCompilationError(
                     "The starting state was not defined in parent classes. "
                     f"Use `start_state` argument when inheriting from {AbstractStateMachine.__qualname__}"
                 )
 
-        cls._state_type = type(start_state)
-        cls._start_state = start_state
-        cls._current_state = start_state
+        cls._state_type = type(init_state)
+        cls._init_state = init_state
+        cls._current_state = init_state
 
         if not inherit_transitions or AbstractStateMachine in cls.__bases__:
+            print("I WAS OVERRIDEN", cls.__bases__)
             cls._state_transitions = {}
+        else:
+            cls._state_transitions = cls._state_transitions.copy()
 
         for attr_name in dir(cls):
             if not isinstance(register := getattr(cls, attr_name), Transitions):
                 continue
-
-            cls._state_transitions.update(register.get_transitions())
+            for state, funcs in register.get_transitions()[0].items():
+                parents_transition = cls._state_transitions.setdefault(state, ())
+                if len(parents_transition) == 0:
+                    cls._state_transitions[state] = funcs
+                    continue
+                else:
+                    overriden_transitions = tuple(
+                        f.__name__ for f in parents_transition
+                    )
+                    cls._state_transitions[state] = tuple(
+                        filter(
+                            lambda f: f not in overriden_transitions, parents_transition
+                        )
+                    ) + tuple(funcs)
 
     @property
     def current_state(self) -> StateEnumT:
@@ -142,7 +159,7 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
     def update(self, *args: P.args, **kwargs: P.kwargs) -> StateEnumT:
         for transition_func in self._state_transitions.get(self._current_state, ()):
             new_state = transition_func(self, *args, **kwargs)
-            if new_state is not None:
+            if new_state is not None and new_state != self._current_state:
                 self._current_state = new_state
                 break
         return self._current_state
@@ -161,60 +178,19 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
         self._frozen_transitions: dict[
             StateEnumT, tuple[TransitionMethodType[StateMachineT, P, StateEnumT], ...]
         ] = {}
+        self._manual_transitions: list[
+            TransitionMethodType[StateMachineT, ..., StateEnumT]
+        ] = []
+        self._frozen_manual_transitions: tuple[
+            TransitionMethodType[StateMachineT, ..., StateEnumT], ...
+        ] = tuple()
         self._spec = _spec
         self._frozen = False
-
-    @overload
-    @staticmethod
-    def define_signature(
-        *,
-        real_func: SpecMethodType[
-            StateMachineT, P, StateEnumT
-        ] = AbstractStateMachine.update,
-    ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
-
-    @overload
-    @staticmethod
-    def define_signature(
-        func: SpecMethodType[StateMachineT, P, StateEnumT],
-        /,
-        *,
-        real_func: SpecMethodType[
-            OtherStateMachineT, P, StateEnumT
-        ] = AbstractStateMachine.update,
-    ) -> SpecMethodType[OtherStateMachineT, P, StateEnumT]: ...
-
-    @staticmethod
-    def define_signature(
-        func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
-        /,
-        *,
-        real_func: SpecMethodType[
-            StateMachineT, P, StateEnumT
-        ] = AbstractStateMachine.update,
-    ) -> (
-        SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
-        | TransitionMethodType[OtherStateMachineT, P, StateEnumT]
-    ):
-        def inner(
-            func: TransitionMethodType[OtherStateMachineT, P, StateEnumT],
-        ) -> TransitionMethodType[OtherStateMachineT, P, StateEnumT]:
-            if TYPE_CHECKING:
-                return func
-            else:
-                wrapper = functools.wraps(real_func)(real_func)
-                wrapper.__signature__ = inspect.signature(func)
-                return wrapper
-
-        if func is None:
-            return inner
-
-        return inner(func)
 
     def new(
         self,
         from_states: Sequence[StateEnumT] | StateEnumT,
-    ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
+    ) -> TransitionDecoratorType[StateMachineT_bis, P, StateEnumT]:
         ref_sig = inspect.signature(self._spec)
 
         if self._frozen:
@@ -237,8 +213,8 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
             )
 
         def inner_register(
-            func: TransitionMethodType[StateMachineT, P, StateEnumT],
-        ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
+            func: TransitionMethodType[StateMachineT_bis, P, StateEnumT],
+        ) -> TransitionMethodType[StateMachineT_bis, P, StateEnumT]:
             sig = inspect.signature(func)
             if sig.parameters != ref_sig.parameters:
                 raise TransitionSignatureError(
@@ -258,13 +234,6 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
             for state in from_states:
                 transition_list = self._transitions.setdefault(state, [])
                 transition_list.append(func)
-
-            @functools.wraps(func)
-            def transition_func(
-                self: StateMachineT, *args: P.args, **kwargs: P.kwargs
-            ) -> Optional[StateEnumT]:
-                self.current_state = func(self, *args, **kwargs)
-                return self.current_state
 
             return func
 
@@ -288,25 +257,34 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
         self,
     ) -> None:
         self._frozen_transitions = {k: tuple(v) for k, v in self._transitions.items()}
+        self._frozen_manual_transitions = tuple(self._manual_transitions)
         self._transitions.clear()
+        self._manual_transitions.clear()
         self._frozen = True
 
     def get_transitions(
         self,
-    ) -> dict[
-        StateEnumT, tuple[TransitionMethodType[StateMachineT, P, StateEnumT], ...]
+    ) -> tuple[
+        dict[
+            StateEnumT, tuple[TransitionMethodType[StateMachineT, P, StateEnumT], ...]
+        ],
+        tuple[TransitionMethodType[StateMachineT, ..., StateEnumT], ...],
     ]:
         if not self._frozen:
             raise TransitionNotFrozenError(
                 "You cannot access transitions before they are frozen."
             )
-        return self._frozen_transitions
+        return self._frozen_transitions, self._frozen_manual_transitions
 
-    @staticmethod
     def manual(
-        # self,
-        func: ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]],
-    ) -> ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]]:
+        self,
+        func: TransitionMethodType[StateMachineT, P_bis, StateEnumT],
+    ) -> TransitionMethodType[StateMachineT, P_bis, StateEnumT]:
+        if self._frozen:
+            raise TransitionFrozenError(
+                "The transitions were already frozen. You cannot add new transitions afterwards."
+            )
+
         @functools.wraps(func)
         def inner_wrapper(
             self: StateMachineT, *args: P_bis.args, **kwargs: P_bis.kwargs
@@ -316,4 +294,52 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
                 self.current_state = result
             return self.current_state
 
+        self._manual_transitions.append(inner_wrapper)
         return inner_wrapper
+
+    @staticmethod
+    @overload
+    def define_signature(
+        *,
+        real_func: SpecMethodType[
+            StateMachineT_bis, P_bis, StateEnumT_bis
+        ] = AbstractStateMachine.update,
+    ) -> TransitionDecoratorType[StateMachineT_bis, P_bis, StateEnumT_bis]: ...
+
+    @staticmethod
+    @overload
+    def define_signature(
+        func: SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis],
+        /,
+        *,
+        real_func: SpecMethodType[
+            StateMachineT_bis, P_bis, StateEnumT_bis
+        ] = AbstractStateMachine.update,
+    ) -> SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]: ...
+
+    @staticmethod
+    def define_signature(
+        func: Optional[SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]] = None,
+        /,
+        *,
+        real_func: SpecMethodType[
+            StateMachineT_bis, P_bis, StateEnumT_bis
+        ] = AbstractStateMachine.update,
+    ) -> (
+        SignatureOverloadDecoratorType[StateMachineT_bis, P_bis, StateEnumT_bis]
+        | TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]
+    ):
+        def inner(
+            func: TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis],
+        ) -> TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]:
+            if TYPE_CHECKING:
+                return func
+            else:
+                wrapper = functools.wraps(real_func)(real_func)
+                wrapper.__signature__ = inspect.signature(func)
+                return wrapper
+
+        if func is None:
+            return inner
+
+        return inner(func)

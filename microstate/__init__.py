@@ -34,9 +34,13 @@ __version__ = "0.9.0"
 from .state_machine import (
     AbstractStateMachine,
     BaseStateMachineError,
+    InvalidStateInput,
     P,
     StateMachineCompilationError,
+    TransitionFrozenError,
+    TransitionNotFrozenError,
     Transitions,
+    TransitionSignatureError,
 )
 
 __all__ = (
@@ -44,5 +48,9 @@ __all__ = (
     "Transitions",
     "P",
     "StateMachineCompilationError",
+    "TransitionSignatureError",
+    "TransitionFrozenError",
+    "TransitionNotFrozenError",
+    "InvalidStateInput",
     "BaseStateMachineError",
 )

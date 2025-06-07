@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 __version__ = "0.9.0"
 
 from .state_machine import (
-    StateMachine,
+    AbstractStateMachine,
     Transitions,
     overload_signature,
     P,
@@ -41,7 +41,7 @@ from .state_machine import (
 )
 
 __all__ = (
-    "StateMachine",
+    "AbstractStateMachine",
     "Transitions",
     "overload_signature",
     "P",

@@ -31,8 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import functools
 import inspect
-from enum import Enum
 import types
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -55,7 +55,7 @@ P = ParamSpec("P")
 P_bis = ParamSpec("P_bis")
 R = TypeVar("R")
 StateEnumT = TypeVar("StateEnumT", bound=Enum)
-StateMachineT = TypeVar("StateMachineT", bound="StateMachine", covariant=True)
+StateMachineT = TypeVar("StateMachineT", bound="AbstractStateMachine", covariant=True)
 OtherStateMachineT: TypeAlias = StateMachineT
 
 
@@ -90,9 +90,9 @@ TransitionDecoratorType: TypeAlias = Callable[
 ]
 
 
-class StateMachine(Generic[StateEnumT, P]):
+class AbstractStateMachine(Generic[StateEnumT, P]):
     _state_type: type[StateEnumT]
-    _state_transitions_: dict[
+    _state_transitions: dict[
         StateEnumT,
         tuple[TransitionMethodType[Self, P, StateEnumT], ...],
     ]
@@ -110,21 +110,21 @@ class StateMachine(Generic[StateEnumT, P]):
             except AttributeError:
                 raise StateMachineCompilationError(
                     "The starting state was not defined in parent classes. "
-                    f"Use `start_state` argument when inheriting from {StateMachine}"
+                    f"Use `start_state` argument when inheriting from {AbstractStateMachine.__qualname__}"
                 )
 
         cls._state_type = type(start_state)
         cls._start_state = start_state
         cls._current_state = start_state
 
-        if not inherit_transitions or StateMachine in cls.__bases__:
-            cls._state_transitions_ = {}
+        if not inherit_transitions or AbstractStateMachine in cls.__bases__:
+            cls._state_transitions = {}
 
         for attr_name in dir(cls):
             if not isinstance(register := getattr(cls, attr_name), Transitions):
                 continue
 
-            cls._state_transitions_.update(register.get_transitions())
+            cls._state_transitions.update(register.get_transitions())
 
     @property
     def current_state(self) -> StateEnumT:
@@ -135,7 +135,7 @@ class StateMachine(Generic[StateEnumT, P]):
         self._current_state = state or self._current_state
 
     def update(self, *args: P.args, **kwargs: P.kwargs) -> StateEnumT:
-        for transition_func in self._state_transitions_.get(self._current_state, ()):
+        for transition_func in self._state_transitions.get(self._current_state, ()):
             new_state = transition_func(self, *args, **kwargs)
             if new_state is not None:
                 self._current_state = new_state
@@ -145,7 +145,10 @@ class StateMachine(Generic[StateEnumT, P]):
 
 class Transitions(Generic[StateMachineT, P, StateEnumT]):
     def __init__(
-        self, _spec: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update
+        self,
+        _spec: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
     ) -> None:
         self._transitions: dict[
             StateEnumT, list[TransitionMethodType[StateMachineT, P, StateEnumT]]
@@ -248,7 +251,7 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
         return self._frozen_transitions
 
     @staticmethod
-    def manual_transition(
+    def manual(
         # self,
         func: ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]],
     ) -> ManualTransitionMethodType[StateMachineT, P_bis, Optional[StateEnumT]]:
@@ -267,7 +270,9 @@ class Transitions(Generic[StateMachineT, P, StateEnumT]):
 @overload
 def overload_signature(
     *,
-    real_func: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+    real_func: SpecMethodType[
+        StateMachineT, P, StateEnumT
+    ] = AbstractStateMachine.update,
 ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
 
 
@@ -276,7 +281,9 @@ def overload_signature(
     func: SpecMethodType[StateMachineT, P, StateEnumT],
     /,
     *,
-    real_func: SpecMethodType[OtherStateMachineT, P, StateEnumT] = StateMachine.update,
+    real_func: SpecMethodType[
+        OtherStateMachineT, P, StateEnumT
+    ] = AbstractStateMachine.update,
 ) -> SpecMethodType[OtherStateMachineT, P, StateEnumT]: ...
 
 
@@ -290,7 +297,9 @@ def overload_signature(
     func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
     /,
     *,
-    real_func: SpecMethodType[StateMachineT, P, StateEnumT] = StateMachine.update,
+    real_func: SpecMethodType[
+        StateMachineT, P, StateEnumT
+    ] = AbstractStateMachine.update,
 ) -> (
     SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
     | TransitionMethodType[OtherStateMachineT, P, StateEnumT]

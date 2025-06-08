@@ -220,25 +220,25 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
 
         return inner(func)
 
-    def new(
+    def new_from(
         self,
-        from_states: Sequence[StateEnumT] | StateEnumT,
+        states: Sequence[StateEnumT] | StateEnumT,
     ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
         if not self._in_context:
             raise TransitionOutsiteContextError(
                 "Attempted to add a new transition outside of the `with` statement."
             )
 
-        if not isinstance(from_states, Iterable):
-            from_states = (from_states,)
+        if not isinstance(states, Iterable):
+            states = (states,)
 
-        if not len(from_states) >= 1:
+        if not len(states) >= 1:
             raise InvalidStateInput(
                 "You must give at least one state to argument `from_states`"
             )
 
-        state_type = type(from_states[0])
-        if not all(map(lambda s: isinstance(s, state_type), from_states)):
+        state_type = type(states[0])
+        if not all(map(lambda s: isinstance(s, state_type), states)):
             raise InvalidStateInput(
                 f"All state inputs must be of the same type ({tuple(type(s) for s in state_type)} != {state_type})"
             )
@@ -263,7 +263,7 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
                     f"Method `{func.__qualname__}` does not have the same return type as `{self._spec.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
                 )
 
-            setattr(func, TAG_ATTR, from_states)
+            setattr(func, TAG_ATTR, states)
 
             return func
 

@@ -41,19 +41,19 @@ class DoorStateMachine(AbstractStateMachine, init_state=DoorState.LOCKED):
                 return DoorState.UNLOCKED
             return None
 
-        @Transition.new(DoorState.LOCKED)
+        @Transition.new_from(DoorState.LOCKED)
         def to_unlocked(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.UNLOCKED if event is DoorEvent.INSERT_KEY else None
 
-        @Transition.new(DoorState.UNLOCKED)
+        @Transition.new_from(DoorState.UNLOCKED)
         def to_locked(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.LOCKED if event is DoorEvent.INSERT_KEY else None
 
-        @Transition.new((DoorState.LOCKED, DoorState.UNLOCKED))
+        @Transition.new_from((DoorState.LOCKED, DoorState.UNLOCKED))
         def to_broken(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.BROKEN if event is DoorEvent.BREAK else None
 
-        @Transition.new(DoorState.BROKEN)
+        @Transition.new_from(DoorState.BROKEN)
         def to_locked_from_broken(
             self, event: Optional[DoorEvent] = None
         ) -> Optional[DoorState]:
@@ -117,7 +117,7 @@ class TestDoorStateMachine(unittest.TestCase):
         with self.assertRaises(InvalidStateInput):
             with Transition(DoorStateMachine.update) as transition:
 
-                @transition.new((DoorState.LOCKED, BadEnum.A))
+                @transition.new_from((DoorState.LOCKED, BadEnum.A))
                 def invalid(
                     self, event: Optional[DoorEvent] = None
                 ) -> Optional[DoorState]:
@@ -135,7 +135,7 @@ class TestDoorStateMachine(unittest.TestCase):
 
                 with Transition(update) as transition:
 
-                    @transition.new(DoorState.LOCKED)
+                    @transition.new_from(DoorState.LOCKED)
                     def bad_transition(
                         self,
                     ) -> Optional[DoorState]:  # missing parameter
@@ -146,13 +146,13 @@ class TestDoorStateMachine(unittest.TestCase):
         t = Transition(DoorStateMachine.update)
         with t:
 
-            @t.new(DoorState.LOCKED)
+            @t.new_from(DoorState.LOCKED)
             def dummy(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
                 return None
 
         with self.assertRaises(TransitionOutsiteContextError):
 
-            @t.new(DoorState.LOCKED)
+            @t.new_from(DoorState.LOCKED)
             def another(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
                 return None
 
@@ -160,7 +160,7 @@ class TestDoorStateMachine(unittest.TestCase):
 class InheritedDoorMachine(DoorStateMachine, init_state=DoorState.UNLOCKED):
     with Transition(DoorStateMachine.update) as Transition:
 
-        @Transition.new(DoorState.UNLOCKED)
+        @Transition.new_from(DoorState.UNLOCKED)
         def lock_directly(
             self, event: Optional[DoorEvent] = None
         ) -> Optional[DoorState]:

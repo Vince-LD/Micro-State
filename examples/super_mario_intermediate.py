@@ -10,7 +10,7 @@ from microstate import (
 class SuperMarioIntermediateExample(BaseSuperMarioMachine):
     with Transition(BaseSuperMarioMachine.update) as transitions:
         # All transitions encode state changes when Mario picks up an item (or not!)
-        @transitions.new(MarioState.NORMAL)
+        @transitions.new_from(MarioState.NORMAL)
         def from_mario(
             self, item: Optional[Item] = None
         ) -> (
@@ -27,7 +27,7 @@ class SuperMarioIntermediateExample(BaseSuperMarioMachine):
                 case Item.FEATHER:
                     return MarioState.CAPE
 
-        @transitions.new(MarioState.SUPER)
+        @transitions.new_from(MarioState.SUPER)
         def from_super_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.FIRE, MarioState.CAPE, MarioState.SUPER] | None:
@@ -37,14 +37,14 @@ class SuperMarioIntermediateExample(BaseSuperMarioMachine):
                 case Item.FEATHER:
                     return MarioState.CAPE
 
-        @transitions.new(MarioState.FIRE)
+        @transitions.new_from(MarioState.FIRE)
         def from_fire_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.CAPE, MarioState.FIRE] | None:
             if item is Item.FEATHER:
                 return MarioState.CAPE
 
-        @transitions.new(MarioState.CAPE)
+        @transitions.new_from(MarioState.CAPE)
         def from_cape_mario(
             self, item: Optional[Item] = None
         ) -> Literal[MarioState.FIRE, MarioState.CAPE] | None:

@@ -7,9 +7,9 @@ It is a **fast, simple, elegant, safe and dependency free** way to define a Stat
 The code is fully contained in a single file, which allows you to easily check it and copy it into your project if needed. You only need to import two classes:
 
 - `StateMachine` which is the abstract class that contains and handles the states and transitions. Transitions can be inherited from a parent (default) or reset if needed using an sublass argument.
-- `Transitions` which is a context manager that allows you create and automatically register transitions
+- `Transition` which is a context manager that allows you to create and automatically register transitions
 
-The `StateMachine` abstract class does not have an `__init__` method which allows you to easily add it to your own classes as a mixin and/or to easily instanciate your own, because the only things that you will need is an `Enum` containing all the states! 
+The `StateMachine` abstract class does not implement `__init__` method which allows you to easily add it to your own classes as a mixin and/or to easily instanciate your own, because the only things that you will need is an `Enum` containing all the states! 
 
 
 ## ✍️ Example ✍️
@@ -43,13 +43,13 @@ Then we create the base state machine that is used in all implementation example
 ```python
 class BaseSuperMarioMachine(AbstractStateMachine, init_state=MarioState.NORMAL):
     # We define a signature that all transitions must follow
-    @Transitions.define_signature
+    @Transition.signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
 
     # You can implement "manual transitions" that will not be automatically called when
     # calling the `update` method because they do not explicitely depend on the current state.
     # Then can be used to force a new current state.
-    with Transitions(update) as transitions:
+    with Transition(update) as transitions:
 
         @transitions.manual
         def take_damage(self) -> MarioState | None:
@@ -69,7 +69,7 @@ Now that the base State Machine class is defined and that we saw one type of tra
 ```python
 
 class SuperMarioShortenedExample(BaseSuperMarioMachine):
-    with Transitions(BaseSuperMarioMachine.update) as transitions:
+    with Transition(BaseSuperMarioMachine.update) as transitions:
         # Here, only the NORMAL can end up to the Super Mario state when picking up an item
         @transitions.new(MarioState.NORMAL)
         def to_super(self, item: Optional[Item] = None) -> MarioState | None:

@@ -37,26 +37,16 @@ from .state_machine import (
     InvalidStateInput,
     P,
     StateMachineCompilationError,
-    TransitionFrozenError,
-    TransitionNotFrozenError,
-    # Transitions,
+    Transition,
     TransitionSignatureError,
-    define_signature,
-    define_transitions,
-    manual
 )
 
 __all__ = (
     "AbstractStateMachine",
-    # "Transitions",
     "P",
     "StateMachineCompilationError",
     "TransitionSignatureError",
-    "TransitionFrozenError",
-    "TransitionNotFrozenError",
     "InvalidStateInput",
     "BaseStateMachineError",
-    "define_signature",
-    "define_transitions",
-    "manual"
+    "Transition",
 )

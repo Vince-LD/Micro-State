@@ -3,12 +3,12 @@ from typing import Literal, Optional
 from example_utils import BaseSuperMarioMachine, Item, MarioState, main
 
 from microstate import (
-    Transitions,
+    Transition,
 )
 
 
 class SuperMarioLongerExample(BaseSuperMarioMachine):
-    with Transitions(BaseSuperMarioMachine.update) as transitions:
+    with Transition(BaseSuperMarioMachine.update) as transitions:
         # All transitions encode state changes when Mario picks up an item (or not!)
         @transitions.new(MarioState.NORMAL)
         def from_normal_to_super(

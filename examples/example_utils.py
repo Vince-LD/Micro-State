@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Optional
 
-from microstate import AbstractStateMachine, Transitions
+from microstate import AbstractStateMachine, Transition
 
 
 class MarioState(Enum):
@@ -24,15 +24,15 @@ class Item(Enum):
 
 class BaseSuperMarioMachine(AbstractStateMachine, init_state=MarioState.NORMAL):
     # We define a signature that all transitions must follow
-    @Transitions.define_signature
+    @Transition.signature
     def update(self, item: Optional[Item] = None) -> MarioState: ...
 
     # You can implement "manual transitions" that will not be automatically called when
     # calling the `update` method because they do not explicitely depend on the current state.
     # Then can be used to force a new current state.
-    with Transitions(update) as transitions:
+    with Transition(update) as transition:
 
-        @transitions.manual
+        @transition.manual
         def take_damage(self) -> MarioState | None:
             match self.current_state:
                 case MarioState.NORMAL:

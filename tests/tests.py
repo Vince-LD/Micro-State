@@ -4,11 +4,10 @@ from typing import Optional
 
 from microstate import (
     AbstractStateMachine,
-    Transitions,
+    Transition,
     TransitionSignatureError,
-    TransitionFrozenError,
+    TransitionContextError,
     InvalidStateInput,
-    TransitionNotFrozenError,
 )
 
 
@@ -31,30 +30,30 @@ class DoorStateMachine(AbstractStateMachine, init_state=DoorState.LOCKED):
         print("===================================")
         return super().__init_subclass__(init_state, inherit_transitions)
 
-    @Transitions.define_signature
+    @Transition.signature
     def update(self, event: Optional[DoorEvent] = None) -> DoorState: ...
 
-    with Transitions(update) as transitions:
+    with Transition(update) as Transition:
 
-        @transitions.manual
+        @Transition.manual
         def force_open(self) -> Optional[DoorState]:
             if self.current_state == DoorState.LOCKED:
                 return DoorState.UNLOCKED
             return None
 
-        @transitions.new(DoorState.LOCKED)
+        @Transition.new(DoorState.LOCKED)
         def to_unlocked(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.UNLOCKED if event is DoorEvent.INSERT_KEY else None
 
-        @transitions.new(DoorState.UNLOCKED)
+        @Transition.new(DoorState.UNLOCKED)
         def to_locked(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.LOCKED if event is DoorEvent.INSERT_KEY else None
 
-        @transitions.new((DoorState.LOCKED, DoorState.UNLOCKED))
+        @Transition.new((DoorState.LOCKED, DoorState.UNLOCKED))
         def to_broken(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
             return DoorState.BROKEN if event is DoorEvent.BREAK else None
 
-        @transitions.new(DoorState.BROKEN)
+        @Transition.new(DoorState.BROKEN)
         def to_locked_from_broken(
             self, event: Optional[DoorEvent] = None
         ) -> Optional[DoorState]:
@@ -116,9 +115,9 @@ class TestDoorStateMachine(unittest.TestCase):
             B = auto()
 
         with self.assertRaises(InvalidStateInput):
-            with Transitions(DoorStateMachine.update) as transitions:
+            with Transition(DoorStateMachine.update) as transition:
 
-                @transitions.new((DoorState.LOCKED, BadEnum.A))
+                @transition.new((DoorState.LOCKED, BadEnum.A))
                 def invalid(
                     self, event: Optional[DoorEvent] = None
                 ) -> Optional[DoorState]:
@@ -131,43 +130,22 @@ class TestDoorStateMachine(unittest.TestCase):
             class BadSignatureMachine(
                 AbstractStateMachine, init_state=DoorState.LOCKED
             ):
-                @Transitions.define_signature
+                @Transition.signature
                 def update(self, event: Optional[DoorEvent] = None) -> DoorState: ...
 
-                with Transitions(update) as transitions:
+                with Transition(update) as transition:
 
-                    @transitions.new(DoorState.LOCKED)
+                    @transition.new(DoorState.LOCKED)
                     def bad_transition(
                         self,
                     ) -> Optional[DoorState]:  # missing parameter
                         return None
 
-    def test_add_after_freeze_error(self):
-        # Cannot add transitions after context exit
-        t = Transitions(DoorStateMachine.update)
-        with t:
-
-            @t.new(DoorState.LOCKED)
-            def dummy(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
-                return None
-
-        with self.assertRaises(TransitionFrozenError):
-
-            @t.new(DoorState.LOCKED)
-            def another(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
-                return None
-
-    def test_access_before_freeze_error(self):
-        # Access get_transitions before freeze
-        t = Transitions(DoorStateMachine.update)
-        with self.assertRaises(TransitionNotFrozenError):
-            _ = t.get_transitions()
-
 
 class InheritedDoorMachine(DoorStateMachine, init_state=DoorState.UNLOCKED):
-    with Transitions(DoorStateMachine.update) as transitions:
+    with Transition(DoorStateMachine.update) as Transition:
 
-        @transitions.new(DoorState.UNLOCKED)
+        @Transition.new(DoorState.UNLOCKED)
         def lock_directly(
             self, event: Optional[DoorEvent] = None
         ) -> Optional[DoorState]:

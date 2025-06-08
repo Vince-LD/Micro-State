@@ -29,10 +29,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 import functools
 import inspect
 from enum import Enum
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -87,12 +88,6 @@ class StateMachineCompilationError(BaseStateMachineError): ...
 
 
 class TransitionSignatureError(StateMachineCompilationError): ...
-
-
-class TransitionFrozenError(StateMachineCompilationError): ...
-
-
-class TransitionNotFrozenError(StateMachineCompilationError): ...
 
 
 class InvalidStateInput(StateMachineCompilationError): ...
@@ -166,32 +161,53 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
                 break
         return self._current_state
 
-    @overload
-    def define_signature(
-        *,
-        real_func: SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis] = update,
-    ) -> TransitionDecoratorType[StateMachineT_bis, P_bis, StateEnumT_bis]: ...
+
+class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
+    def __init__(
+        self, spec: TransitionMethodType[StateMachineT, P, StateEnumT]
+    ) -> None:
+        super().__init__()
+        self._spec = spec
 
     @overload
-    def define_signature(
-        func: SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis],
+    @classmethod
+    def signature(
+        cls,
         /,
         *,
-        real_func: SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis] = update,
-    ) -> SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]: ...
+        real_func: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
+    ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]: ...
 
-    def define_signature(
-        func: Optional[SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]] = None,
+    @overload
+    @classmethod
+    def signature(
+        cls,
+        func: SpecMethodType[StateMachineT, P, StateEnumT],
         /,
         *,
-        real_func: SpecMethodType[StateMachineT_bis, P_bis, StateEnumT_bis] = update,
+        real_func: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
+    ) -> SpecMethodType[StateMachineT, P, StateEnumT]: ...
+
+    @classmethod
+    def signature(
+        cls,
+        func: Optional[SpecMethodType[StateMachineT, P, StateEnumT]] = None,
+        /,
+        *,
+        real_func: SpecMethodType[
+            StateMachineT, P, StateEnumT
+        ] = AbstractStateMachine.update,
     ) -> (
-        SignatureOverloadDecoratorType[StateMachineT_bis, P_bis, StateEnumT_bis]
-        | TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]
+        SignatureOverloadDecoratorType[StateMachineT, P, StateEnumT]
+        | TransitionMethodType[StateMachineT, P, StateEnumT]
     ):
         def inner(
-            func: TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis],
-        ) -> TransitionMethodType[StateMachineT_bis, P_bis, StateEnumT_bis]:
+            func: TransitionMethodType[StateMachineT, P, StateEnumT],
+        ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
             if TYPE_CHECKING:
                 return func
             else:
@@ -204,11 +220,11 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
 
         return inner(func)
 
-    def _register_transition(
+    def new(
+        self,
         from_states: Sequence[StateEnumT] | StateEnumT,
-        _spec: TransitionMethodType[StateMachineT, P, StateEnumT],
-    ) -> TransitionDecoratorType[StateMachineT_bis, P, StateEnumT]:
-        ref_sig = inspect.signature(_spec)
+    ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
+        ref_sig = inspect.signature(self._spec)
 
         if not isinstance(from_states, Iterable):
             from_states = (from_states,)
@@ -225,12 +241,12 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
             )
 
         def inner_register(
-            func: TransitionMethodType[StateMachineT_bis, P, StateEnumT],
-        ) -> TransitionMethodType[StateMachineT_bis, P, StateEnumT]:
+            func: TransitionMethodType[StateMachineT, P, StateEnumT],
+        ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
             sig = inspect.signature(func)
             if sig.parameters != ref_sig.parameters:
                 raise TransitionSignatureError(
-                    f"Method `{func.__qualname__}` does not have the same signature as `{_spec.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
+                    f"Method `{func.__qualname__}` does not have the same signature as `{self._spec.__qualname__}`: {sig.parameters} != {ref_sig.parameters}"
                 )
 
             if sig.return_annotation is not state_type and (
@@ -240,30 +256,27 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
                 )
             ):
                 raise TransitionSignatureError(
-                    f"Method `{func.__qualname__}` does not have the same return type as `{_spec.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
+                    f"Method `{func.__qualname__}` does not have the same return type as `{self._spec.__qualname__}`: {sig.return_annotation} != {ref_sig.return_annotation}"
                 )
 
-            for state in from_states:
-                setattr(func, TAG_ATTR, from_states)
+            setattr(func, TAG_ATTR, from_states)
 
             return func
 
         return inner_register
 
-    @contextmanager
-    def define_transitions(
-        spec_func: TransitionMethodType[StateMachineT, P, StateEnumT],
-    ) -> Generator[
-        Callable[
-            [Sequence[StateEnumT] | StateEnumT],
-            TransitionDecoratorType[StateMachineT, P, StateEnumT],
-        ],
-        None,
-        None,
-    ]:
-        yield functools.partial(_register_transition, _spec=spec_func)
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
+        if exc_value is not None:
+            raise exc_value
+        return
 
     def manual(
+        self,
         func: TransitionMethodType[StateMachineT, P_bis, StateEnumT],
     ) -> TransitionMethodType[StateMachineT, P_bis, StateEnumT]:
         @functools.wraps(func)

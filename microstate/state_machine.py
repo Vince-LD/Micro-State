@@ -100,15 +100,11 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
     _state_transitions: dict[
         StateEnumT,
         tuple[TransitionMethodType[Self, P, StateEnumT], ...],
-    ]
+    ] = {}
     _init_state: StateEnumT
     _current_state: StateEnumT
 
-    def __init_subclass__(
-        cls,
-        init_state: Optional[StateEnumT] | None = None,
-        inherit_transitions: bool = True,
-    ) -> None:
+    def __init_subclass__(cls, init_state: Optional[StateEnumT] | None = None) -> None:
         if init_state is None:
             try:
                 init_state = cls._init_state
@@ -122,13 +118,10 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
         cls._init_state = init_state
         cls._current_state = init_state
 
-        if not inherit_transitions or AbstractStateMachine in cls.__bases__:
-            cls._state_transitions = {}
-        else:
-            cls._state_transitions = cls._state_transitions.copy()
+        cls._state_transitions = cls._state_transitions.copy()
 
         temporary_transitions = {
-            s: list(trans) for s, trans in cls._state_transitions.items()
+            s: set(trans) for s, trans in cls._state_transitions.items()
         }
         for attr_name in dir(cls):
             if not (
@@ -139,7 +132,7 @@ class AbstractStateMachine(Generic[StateEnumT, P]):
 
             func = cast(TransitionMethodType[Self, P, StateEnumT], func)
             for state in states:
-                temporary_transitions.setdefault(state, []).append(func)
+                temporary_transitions.setdefault(state, set()).add(func)
         cls._state_transitions = {
             s: tuple(trans) for s, trans in temporary_transitions.items()
         }

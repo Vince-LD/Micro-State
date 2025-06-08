@@ -24,11 +24,8 @@ class DoorEvent(Enum):
 
 
 class DoorStateMachine(AbstractStateMachine, init_state=DoorState.LOCKED):
-    def __init_subclass__(
-        cls, init_state: DoorState | None = None, inherit_transitions: bool = True
-    ) -> None:
-        print("===================================")
-        return super().__init_subclass__(init_state, inherit_transitions)
+    def __init_subclass__(cls, init_state: DoorState | None = None) -> None:
+        return super().__init_subclass__(init_state)
 
     @Transition.signature
     def update(self, event: Optional[DoorEvent] = None) -> DoorState: ...

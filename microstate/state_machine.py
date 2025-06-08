@@ -1,7 +1,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2025, Vincent
+Copyright (c) 2025, Vincent Le Du
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -29,9 +29,9 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-from contextlib import AbstractContextManager
 import functools
 import inspect
+from contextlib import AbstractContextManager
 from enum import Enum
 from types import TracebackType
 from typing import (
@@ -55,13 +55,10 @@ from typing import (
 
 P = ParamSpec("P")
 P_bis = ParamSpec("P_bis")
-R = TypeVar("R")
 StateEnumT = TypeVar("StateEnumT", bound=Enum)
-StateEnumT_bis = TypeVar("StateEnumT_bis", bound=Enum)
 StateMachineT = TypeVar(
     "StateMachineT", bound="AbstractStateMachine", contravariant=True
 )
-StateMachineT_bis: TypeAlias = StateMachineT
 
 
 SpecMethodType: TypeAlias = Callable[Concatenate[StateMachineT, P], StateEnumT]

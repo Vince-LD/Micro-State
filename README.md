@@ -2,14 +2,14 @@
 
 ## 🧑‍🏫 What is it 👩‍🏫
 
-It is a **fast, simple, elegant, safe and dependency free** way to define a State Machine in Python. It is fully **type-checked** with great type hints that will allow you to be very explicit while writing minimal code. One of the consequences is that it is **fully supported by type-checkers** like Pyright and will work perfectly your **autocomplete**.
+It is a **fast, simple, elegant, safe and dependency free** way to define a State Machine in Python. It is fully **type-checked** with great type hints that will allow you to be very explicit while writing minimal code. Consequently it is **fully supported by type-checkers** like Pyright and will work perfectly with your **autocomplete**.
 
 The code is fully contained in a single file, which allows you to easily check it and copy it into your project if needed. You only need to import two classes:
 
-- `StateMachine` which is the abstract class that contains and handles the states and transitions. Transitions can be inherited from a parent (default) or reset if needed using an sublass argument.
+- `AbstractStateMachine` which is the abstract class that contains and handles the states and transitions.
 - `Transition` which is a context manager that allows you to create and automatically register transitions
 
-The `StateMachine` abstract class does not implement `__init__` method which allows you to easily add it to your own classes as a mixin and/or to easily instanciate your own, because the only things that you will need is an `Enum` containing all the states! 
+The `AbstractStateMachine` abstract class does not implement `__init__` method which allows you to easily add it to your own classes as a mixin and/or to easily instanciate your own, because the only things that you will need is an `Enum` containing all the states! 
 
 
 ## ✍️ Example ✍️

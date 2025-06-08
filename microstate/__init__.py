@@ -38,6 +38,7 @@ from .state_machine import (
     P,
     StateMachineCompilationError,
     Transition,
+    TransitionOutsiteContextError,
     TransitionSignatureError,
 )
 
@@ -49,4 +50,5 @@ __all__ = (
     "InvalidStateInput",
     "BaseStateMachineError",
     "Transition",
+    "TransitionOutsiteContextError",
 )

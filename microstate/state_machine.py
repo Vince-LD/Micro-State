@@ -38,7 +38,6 @@ from typing import (
     TYPE_CHECKING,
     Callable,
     Concatenate,
-    Generator,
     Generic,
     Iterable,
     Literal,
@@ -88,6 +87,9 @@ class StateMachineCompilationError(BaseStateMachineError): ...
 
 
 class TransitionSignatureError(StateMachineCompilationError): ...
+
+
+class TransitionOutsiteContextError(StateMachineCompilationError): ...
 
 
 class InvalidStateInput(StateMachineCompilationError): ...
@@ -168,6 +170,7 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
     ) -> None:
         super().__init__()
         self._spec = spec
+        self._in_context = False
 
     @overload
     @classmethod
@@ -224,7 +227,10 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
         self,
         from_states: Sequence[StateEnumT] | StateEnumT,
     ) -> TransitionDecoratorType[StateMachineT, P, StateEnumT]:
-        ref_sig = inspect.signature(self._spec)
+        if not self._in_context:
+            raise TransitionOutsiteContextError(
+                "Attempted to add a new transition outside of the `with` statement."
+            )
 
         if not isinstance(from_states, Iterable):
             from_states = (from_states,)
@@ -243,6 +249,7 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
         def inner_register(
             func: TransitionMethodType[StateMachineT, P, StateEnumT],
         ) -> TransitionMethodType[StateMachineT, P, StateEnumT]:
+            ref_sig = inspect.signature(self._spec)
             sig = inspect.signature(func)
             if sig.parameters != ref_sig.parameters:
                 raise TransitionSignatureError(
@@ -265,6 +272,10 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
 
         return inner_register
 
+    def __enter__(self) -> Self:
+        self._in_context = True
+        return super().__enter__()
+
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
@@ -273,6 +284,7 @@ class Transition(AbstractContextManager, Generic[StateMachineT, P, StateEnumT]):
     ) -> bool | None:
         if exc_value is not None:
             raise exc_value
+        self._in_context = False
         return
 
     def manual(

@@ -6,7 +6,7 @@ from microstate import (
     AbstractStateMachine,
     Transition,
     TransitionSignatureError,
-    TransitionContextError,
+    TransitionOutsiteContextError,
     InvalidStateInput,
 )
 
@@ -140,6 +140,21 @@ class TestDoorStateMachine(unittest.TestCase):
                         self,
                     ) -> Optional[DoorState]:  # missing parameter
                         return None
+
+    def test_add_after_freeze_error(self):
+        # Cannot add transitions after context exit
+        t = Transition(DoorStateMachine.update)
+        with t:
+
+            @t.new(DoorState.LOCKED)
+            def dummy(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
+                return None
+
+        with self.assertRaises(TransitionOutsiteContextError):
+
+            @t.new(DoorState.LOCKED)
+            def another(self, event: Optional[DoorEvent] = None) -> Optional[DoorState]:
+                return None
 
 
 class InheritedDoorMachine(DoorStateMachine, init_state=DoorState.UNLOCKED):

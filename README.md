@@ -49,9 +49,9 @@ class BaseSuperMarioMachine(AbstractStateMachine, init_state=MarioState.NORMAL):
     # You can implement "manual transitions" that will not be automatically called when
     # calling the `update` method because they do not explicitely depend on the current state.
     # Then can be used to force a new current state.
-    with Transition(update) as transitions:
+    with Transition(update) as transition:
 
-        @transitions.manual
+        @transition.manual
         def take_damage(self) -> MarioState | None:
             match self.current_state:
                 case MarioState.NORMAL:
@@ -69,19 +69,19 @@ Now that the base State Machine class is defined and that we saw one type of tra
 ```python
 
 class SuperMarioShortenedExample(BaseSuperMarioMachine):
-    with Transition(BaseSuperMarioMachine.update) as transitions:
+    with Transition(BaseSuperMarioMachine.update) as transition:
         # Here, only the NORMAL can end up to the Super Mario state when picking up an item
-        @transitions.new(MarioState.NORMAL)
+        @transition.new(MarioState.NORMAL)
         def to_super(self, item: Optional[Item] = None) -> MarioState | None:
             return item is Item.MUSHROOM and MarioState.SUPER or None
 
         # In this case, many states can transition to FIRE when uusing a Flower
-        @transitions.new((MarioState.NORMAL, MarioState.SUPER, MarioState.CAPE))
+        @transition.new((MarioState.NORMAL, MarioState.SUPER, MarioState.CAPE))
         def to_fire(self, item: Optional[Item] = None) -> MarioState | None:
             return item is Item.FLOWER and MarioState.FIRE or None
 
         # Same here with the cape
-        @transitions.new((MarioState.NORMAL, MarioState.SUPER, MarioState.FIRE))
+        @transition.new((MarioState.NORMAL, MarioState.SUPER, MarioState.FIRE))
         def to_cape(self, item: Optional[Item] = None) -> MarioState | None:
             return item is Item.FEATHER and MarioState.CAPE or None
 ```

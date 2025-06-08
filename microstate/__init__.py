@@ -1,7 +1,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2025, Vincent
+Copyright (c) 2025, Vincent Le Du
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,19 +32,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 __version__ = "0.9.0"
 
 from .state_machine import (
-    StateMachine,
-    define_transitions,
-    overload_signature,
+    AbstractStateMachine,
+    BaseStateMachineError,
+    InvalidStateInput,
     P,
     StateMachineCompilationError,
-    BaseStateMachineError,
+    Transition,
+    TransitionOutsiteContextError,
+    TransitionSignatureError,
 )
 
 __all__ = (
-    "StateMachine",
-    "define_transitions",
-    "overload_signature",
+    "AbstractStateMachine",
     "P",
     "StateMachineCompilationError",
+    "TransitionSignatureError",
+    "InvalidStateInput",
     "BaseStateMachineError",
+    "Transition",
+    "TransitionOutsiteContextError",
 )
